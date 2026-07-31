@@ -551,7 +551,7 @@
             dropLabel.style.display = 'none';
             uploadBtn.disabled = false;
         }
-        uploadBtn.addEventListener('click', async() => {
+        uploadBtn.addEventListener('click', async () => {
             if (!selectedFile) return;
             uploadBtn.disabled = true;
             uploadBtn.textContent = 'Scanning…';
@@ -566,7 +566,7 @@
         const camCaptureBtn = document.getElementById('cam-capture-btn');
         let stream = null;
 
-        camStartBtn.addEventListener('click', async() => {
+        camStartBtn.addEventListener('click', async () => {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
@@ -583,7 +583,7 @@
             }
         });
 
-        camCaptureBtn.addEventListener('click', async() => {
+        camCaptureBtn.addEventListener('click', async () => {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
@@ -620,10 +620,10 @@
         }
 
         function renderStats(stats) {
-            document.getElementById('stat-total').textContent = stats.total ? ? 0;
-            document.getElementById('stat-passed').textContent = stats.passed ? ? 0;
-            document.getElementById('stat-due').textContent = stats.due ? ? 0;
-            document.getElementById('stat-failed').textContent = stats.failed ? ? 0;
+            document.getElementById('stat-total').textContent = stats.total ?? 0;
+            document.getElementById('stat-passed').textContent = stats.passed ?? 0;
+            document.getElementById('stat-due').textContent = stats.due ?? 0;
+            document.getElementById('stat-failed').textContent = stats.failed ?? 0;
         }
 
         function renderLatest(entry) {
@@ -666,4 +666,4 @@
 
 </body>
 
-  </html>
+</html>
