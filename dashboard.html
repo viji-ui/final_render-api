@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gas Cylinder Inspection Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2e; --panel2:#1c2438;
+    --border:#2a3350; --text:#e8ecf6; --muted:#8b93ab;
+    --safe:#22c55e; --due:#f5b03e; --expired:#ef4444; --accent:#5b8dee;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); padding:24px;
+  }
+  h1{font-size:20px; margin:0 0 4px;}
+  .sub{color:var(--muted); font-size:13px; margin-bottom:16px;}
+
+  .api-bar{
+    display:flex; gap:10px; align-items:center; background:var(--panel);
+    border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:20px;
+    flex-wrap:wrap;
+  }
+  .api-bar label{font-size:12px; color:var(--muted); font-weight:600; white-space:nowrap;}
+  .api-bar input{
+    flex:1; min-width:220px; background:var(--panel2); border:1px solid var(--border);
+    color:var(--text); padding:8px 10px; border-radius:6px; font-size:13px; font-family:monospace;
+  }
+  .api-bar input:focus{outline:none; border-color:var(--accent);}
+  #api-status{font-size:12px; font-weight:600; white-space:nowrap;}
+  #api-status.ok{color:var(--safe);}
+  #api-status.bad{color:var(--expired);}
+  #api-status.checking{color:var(--muted);}
+
+  .tabs{display:flex; gap:6px; border-bottom:1px solid var(--border); margin-bottom:20px;}
+  .tab-btn{
+    background:none; border:none; color:var(--muted); padding:10px 18px;
+    font-size:14px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent;
+    transition:.15s;
+  }
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--accent); border-bottom-color:var(--accent);}
+  .tab-content{display:none;}
+  .tab-content.active{display:block;}
+
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px;}
+  .card .num{font-size:28px; font-weight:700;}
+  .card .label{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin-top:4px;}
+  .safe .num{color:var(--safe);} .due .num{color:var(--due);} .expired .num{color:var(--expired);}
+
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px;}
+  .panel h2{font-size:14px; margin:0 0 12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
+
+  .badge{display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; text-transform:uppercase;}
+  .badge.safe{background:rgba(34,197,94,.15); color:var(--safe);}
+  .badge.due{background:rgba(245,176,62,.15); color:var(--due);}
+  .badge.expired{background:rgba(239,68,68,.15); color:var(--expired);}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{text-align:left; padding:8px 6px; border-bottom:1px solid var(--border);}
+  th{color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;}
+  .empty{color:var(--muted); font-size:13px; padding:20px 0; text-align:center;}
+  .dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle;}
+  .dot.safe{background:var(--safe);} .dot.due{background:var(--due);} .dot.expired{background:var(--expired);}
+
+  .scan-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  @media (max-width:800px){ .scan-grid{grid-template-columns:1fr;} }
+  .drop-zone{
+    border:2px dashed var(--border); border-radius:10px; padding:40px 20px;
+    text-align:center; color:var(--muted); cursor:pointer; transition:.15s;
+  }
+  .drop-zone:hover, .drop-zone.dragover{border-color:var(--accent); color:var(--text); background:rgba(91,141,238,.06);}
+  .drop-zone input{display:none;}
+  .btn{
+    background:var(--accent); color:#fff; border:none; padding:10px 18px;
+    border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:.15s;
+  }
+  .btn:hover{filter:brightness(1.1);}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+  .btn.secondary{background:var(--panel2); border:1px solid var(--border); color:var(--text);}
+  #video-preview, #img-preview{width:100%; border-radius:8px; margin-top:12px; display:none; max-height:260px; object-fit:contain; background:#000;}
+  .cam-controls{display:flex; gap:8px; margin-top:12px;}
+  .scan-result{margin-top:16px;}
+  .latest-id{font-size:22px; font-weight:700;}
+</style>
+</head>
+<body>
+
+  <h1>⛽ Gas Cylinder Inspection Dashboard</h1>
+  <div class="sub">Live feed from scanner / mobile app</div>
+
+  <div class="api-bar">
+    <label for="api-url-input">API URL</label>
+    <input type="text" id="api-url-input" placeholder="https://your-app.onrender.com">
+    <button class="btn secondary" id="api-save-btn">Connect</button>
+    <span id="api-status" class="checking">checking…</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="scan">Scan</button>
+    <button class="tab-btn" data-tab="history">History</button>
+    <button class="tab-btn" data-tab="stats">Stats</button>
+  </div>
+
+  <div class="tab-content active" id="tab-scan">
+    <div class="scan-grid">
+      <div class="panel">
+        <h2>Upload QR Image</h2>
+        <label class="drop-zone" id="drop-zone">
+          <div id="drop-label">Click to upload or drag a QR image here</div>
+          <img id="img-preview" alt="preview">
+          <input type="file" id="file-input" accept="image/*">
+        </label>
+        <div style="margin-top:12px;">
+          <button class="btn" id="upload-btn" disabled>Scan Uploaded Image</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Scan with Camera</h2>
+        <video id="video-preview" autoplay playsinline></video>
+        <canvas id="capture-canvas" style="display:none;"></canvas>
+        <div class="cam-controls">
+          <button class="btn secondary" id="cam-start-btn">Start Camera</button>
+          <button class="btn" id="cam-capture-btn" disabled>Capture &amp; Scan</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel scan-result" id="scan-result-panel" style="display:none;">
+      <h2>Scan Result</h2>
+      <div id="scan-result-content"></div>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-history">
+    <div class="panel">
+      <h2>Recent History</h2>
+      <div id="history-content" class="empty">No history yet.</div>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-stats">
+    <div class="stats">
+      <div class="card"><div class="num" id="stat-total">0</div><div class="label">Total Scans</div></div>
+      <div class="card safe"><div class="num" id="stat-passed">0</div><div class="label">Safe</div></div>
+      <div class="card due"><div class="num" id="stat-due">0</div><div class="label">Due</div></div>
+      <div class="card expired"><div class="num" id="stat-failed">0</div><div class="label">Expired</div></div>
+    </div>
+    <div class="panel">
+      <h2>Latest Scan</h2>
+      <div id="latest-content" class="empty">No scans yet — waiting for data…</div>
+    </div>
+  </div>
+
+<script>
+const STORAGE_KEY = 'gasCylinderApiUrl';
+const apiInput = document.getElementById('api-url-input');
+const apiStatus = document.getElementById('api-status');
+const apiSaveBtn = document.getElementById('api-save-btn');
+
+function getApiBase() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) return stored.replace(/\/$/, '');
+  return window.location.origin;
+}
+function setApiBase(url) {
+  if (!url) {
+    localStorage.removeItem(STORAGE_KEY);
+  } else {
+    localStorage.setItem(STORAGE_KEY, url.replace(/\/$/, ''));
+  }
+}
+apiInput.value = localStorage.getItem(STORAGE_KEY) || '';
+apiInput.placeholder = window.location.origin + '  (leave blank to use this same server)';
+
+async function checkApiHealth() {
+  apiStatus.className = 'checking';
+  apiStatus.textContent = 'checking…';
+  try {
+    const res = await fetch(getApiBase() + '/healthz');
+    if (res.ok) {
+      apiStatus.className = 'ok';
+      apiStatus.textContent = '● connected';
+    } else {
+      throw new Error('bad status');
+    }
+  } catch (err) {
+    apiStatus.className = 'bad';
+    apiStatus.textContent = '● unreachable';
+  }
+}
+apiSaveBtn.addEventListener('click', () => {
+  setApiBase(apiInput.value.trim());
+  checkApiHealth();
+  refreshHistoryAndStats();
+});
+checkApiHealth();
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+async function fetchJSON(path, opts) {
+  const res = await fetch(getApiBase() + path, opts);
+  return res.json();
+}
+function statusBadge(status) {
+  return `<span class="badge ${status}">${status}</span>`;
+}
+function renderScanResult(result) {
+  const panel = document.getElementById('scan-result-panel');
+  const el = document.getElementById('scan-result-content');
+  panel.style.display = 'block';
+  if (result.error) {
+    el.innerHTML = `<div style="color:var(--expired);">${result.error}</div>`;
+    return;
+  }
+  const cyl = result.cylinder || {};
+  el.innerHTML = `
+    <div class="latest-id">${cyl.cylinder_id ?? 'Unknown'}</div>
+    <div style="margin:8px 0;">${statusBadge(result.status)}</div>
+    <div style="color:var(--muted); font-size:13px; line-height:1.7;">
+      Time: ${result.time ?? '-'}<br>
+      Next Inspection: ${cyl.next_inspection ?? '-'}<br>
+      ${cyl.manufacturer ? 'Manufacturer: ' + cyl.manufacturer + '<br>' : ''}
+    </div>
+  `;
+}
+async function sendImageToScanAPI(blob) {
+  const formData = new FormData();
+  formData.append('image', blob, 'scan.jpg');
+  const result = await fetchJSON('/api/scan-qr', { method: 'POST', body: formData });
+  renderScanResult(result);
+  refreshHistoryAndStats();
+}
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const imgPreview = document.getElementById('img-preview');
+const dropLabel = document.getElementById('drop-label');
+const uploadBtn = document.getElementById('upload-btn');
+let selectedFile = null;
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+function handleFile(file) {
+  selectedFile = file;
+  const url = URL.createObjectURL(file);
+  imgPreview.src = url;
+  imgPreview.style.display = 'block';
+  dropLabel.style.display = 'none';
+  uploadBtn.disabled = false;
+}
+uploadBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = 'Scanning…';
+  await sendImageToScanAPI(selectedFile);
+  uploadBtn.disabled = false;
+  uploadBtn.textContent = 'Scan Uploaded Image';
+});
+
+const video = document.getElementById('video-preview');
+const canvas = document.getElementById('capture-canvas');
+const camStartBtn = document.getElementById('cam-start-btn');
+const camCaptureBtn = document.getElementById('cam-capture-btn');
+let stream = null;
+
+camStartBtn.addEventListener('click', async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    camCaptureBtn.disabled = false;
+    camStartBtn.textContent = 'Camera On';
+    camStartBtn.disabled = true;
+  } catch (err) {
+    alert('Could not access camera: ' + err.message);
+  }
+});
+
+camCaptureBtn.addEventListener('click', async () => {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob(async blob => {
+    camCaptureBtn.disabled = true;
+    camCaptureBtn.textContent = 'Scanning…';
+    await sendImageToScanAPI(blob);
+    camCaptureBtn.disabled = false;
+    camCaptureBtn.textContent = 'Capture & Scan';
+  }, 'image/jpeg', 0.9);
+});
+
+function renderHistory(list) {
+  const el = document.getElementById('history-content');
+  if (!list || list.length === 0) {
+    el.innerHTML = '<div class="empty">No history yet.</div>';
+    return;
+  }
+  const rows = list.map(entry => {
+    const cyl = entry.cylinder || {};
+    return `<tr>
+      <td><span class="dot ${entry.status}"></span>${cyl.cylinder_id ?? '-'}</td>
+      <td>${statusBadge(entry.status)}</td>
+      <td>${entry.time ?? '-'}</td>
+      <td>${cyl.next_inspection ?? '-'}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Cylinder ID</th><th>Status</th><th>Time</th><th>Next Inspection</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+function renderStats(stats) {
+  document.getElementById('stat-total').textContent = stats.total ?? 0;
+  document.getElementById('stat-passed').textContent = stats.passed ?? 0;
+  document.getElementById('stat-due').textContent = stats.due ?? 0;
+  document.getElementById('stat-failed').textContent = stats.failed ?? 0;
+}
+function renderLatest(entry) {
+  const el = document.getElementById('latest-content');
+  if (!entry) {
+    el.innerHTML = '<div class="empty">No scans yet — waiting for data…</div>';
+    return;
+  }
+  const cyl = entry.cylinder || {};
+  el.innerHTML = `
+    <div class="latest-id">${cyl.cylinder_id ?? 'Unknown'}</div>
+    <div style="margin:8px 0;">${statusBadge(entry.status)}</div>
+    <div style="color:var(--muted); font-size:13px; line-height:1.7;">
+      Time: ${entry.time ?? '-'}<br>
+      Next Inspection: ${cyl.next_inspection ?? '-'}<br>
+    </div>
+  `;
+}
+async function refreshHistoryAndStats() {
+  try {
+    const [latest, history, stats] = await Promise.all([
+      fetchJSON('/api/latest'),
+      fetchJSON('/api/history'),
+      fetchJSON('/api/stats'),
+    ]);
+    renderLatest(latest);
+    renderHistory(history);
+    renderStats(stats);
+    apiStatus.className = 'ok';
+    apiStatus.textContent = '● connected';
+  } catch (err) {
+    console.error('Refresh failed:', err);
+    apiStatus.className = 'bad';
+    apiStatus.textContent = '● unreachable';
+  }
+}
+refreshHistoryAndStats();
+setInterval(refreshHistoryAndStats, 3000);
+</script>
+
+</body>
+</html>
